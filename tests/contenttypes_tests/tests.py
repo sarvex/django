@@ -164,7 +164,10 @@ class GenericForeignKeyTests(IsolatedModelsTestCase):
         expected = [
             checks.Error(
                 "'Model.content_type' is not a ForeignKey.",
-                hint="GenericForeignKeys must use a ForeignKey to 'contenttypes.ContentType' as the 'content_type' field.",
+                hint=(
+                    "GenericForeignKeys must use a ForeignKey to "
+                    "'contenttypes.ContentType' as the 'content_type' field."
+                ),
                 obj=Model.content_object,
                 id='contenttypes.E003',
             )
@@ -173,7 +176,7 @@ class GenericForeignKeyTests(IsolatedModelsTestCase):
 
     def test_content_type_field_pointing_to_wrong_model(self):
         class Model(models.Model):
-            content_type = models.ForeignKey('self')  # should point to ContentType
+            content_type = models.ForeignKey('self', models.CASCADE)  # should point to ContentType
             object_id = models.PositiveIntegerField()
             content_object = GenericForeignKey(
                 'content_type', 'object_id')
@@ -182,7 +185,10 @@ class GenericForeignKeyTests(IsolatedModelsTestCase):
         expected = [
             checks.Error(
                 "'Model.content_type' is not a ForeignKey to 'contenttypes.ContentType'.",
-                hint="GenericForeignKeys must use a ForeignKey to 'contenttypes.ContentType' as the 'content_type' field.",
+                hint=(
+                    "GenericForeignKeys must use a ForeignKey to "
+                    "'contenttypes.ContentType' as the 'content_type' field."
+                ),
                 obj=Model.content_object,
                 id='contenttypes.E004',
             )
@@ -191,7 +197,7 @@ class GenericForeignKeyTests(IsolatedModelsTestCase):
 
     def test_missing_object_id_field(self):
         class TaggedItem(models.Model):
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             # missing object_id field
             content_object = GenericForeignKey()
 
@@ -208,7 +214,7 @@ class GenericForeignKeyTests(IsolatedModelsTestCase):
 
     def test_field_name_ending_with_underscore(self):
         class Model(models.Model):
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             object_id = models.PositiveIntegerField()
             content_object_ = GenericForeignKey(
                 'content_type', 'object_id')
@@ -236,33 +242,12 @@ class GenericForeignKeyTests(IsolatedModelsTestCase):
         errors = checks.run_checks()
         self.assertEqual(errors, ['performed!'])
 
-    def test_unsaved_instance_on_generic_foreign_key(self):
-        """
-        #10811 -- Assigning an unsaved object to GenericForeignKey
-        should raise an exception.
-        """
-        class Model(models.Model):
-            content_type = models.ForeignKey(ContentType, null=True)
-            object_id = models.PositiveIntegerField(null=True)
-            content_object = GenericForeignKey('content_type', 'object_id')
-
-        author = Author(name='Author')
-        model = Model()
-        model.content_object = None   # no error here as content_type allows None
-        with self.assertRaisesMessage(ValueError,
-                                    'Cannot assign "%r": "%s" instance isn\'t saved in the database.'
-                                    % (author, author._meta.object_name)):
-            model.content_object = author   # raised ValueError here as author is unsaved
-
-        author.save()
-        model.content_object = author   # no error because the instance is saved
-
 
 class GenericRelationshipTests(IsolatedModelsTestCase):
 
     def test_valid_generic_relationship(self):
         class TaggedItem(models.Model):
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             object_id = models.PositiveIntegerField()
             content_object = GenericForeignKey()
 
@@ -274,7 +259,7 @@ class GenericRelationshipTests(IsolatedModelsTestCase):
 
     def test_valid_generic_relationship_with_explicit_fields(self):
         class TaggedItem(models.Model):
-            custom_content_type = models.ForeignKey(ContentType)
+            custom_content_type = models.ForeignKey(ContentType, models.CASCADE)
             custom_object_id = models.PositiveIntegerField()
             content_object = GenericForeignKey(
                 'custom_content_type', 'custom_object_id')
@@ -306,7 +291,7 @@ class GenericRelationshipTests(IsolatedModelsTestCase):
     def test_valid_self_referential_generic_relationship(self):
         class Model(models.Model):
             rel = GenericRelation('Model')
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             object_id = models.PositiveIntegerField()
             content_object = GenericForeignKey(
                 'content_type', 'object_id')
@@ -316,7 +301,7 @@ class GenericRelationshipTests(IsolatedModelsTestCase):
 
     def test_missing_generic_foreign_key(self):
         class TaggedItem(models.Model):
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             object_id = models.PositiveIntegerField()
 
         class Bookmark(models.Model):
@@ -341,7 +326,7 @@ class GenericRelationshipTests(IsolatedModelsTestCase):
             pass
 
         class SwappedModel(models.Model):
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             object_id = models.PositiveIntegerField()
             content_object = GenericForeignKey()
 
@@ -366,7 +351,7 @@ class GenericRelationshipTests(IsolatedModelsTestCase):
 
     def test_field_name_ending_with_underscore(self):
         class TaggedItem(models.Model):
-            content_type = models.ForeignKey(ContentType)
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
             object_id = models.PositiveIntegerField()
             content_object = GenericForeignKey()
 

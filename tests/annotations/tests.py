@@ -5,33 +5,28 @@ from decimal import Decimal
 
 from django.core.exceptions import FieldDoesNotExist, FieldError
 from django.db.models import (
-    F, BooleanField, CharField, Count, Func, IntegerField, Sum, Value,
+    F, BooleanField, CharField, Count, DateTimeField, ExpressionWrapper, Func,
+    IntegerField, Sum, Value,
 )
-from django.test import TestCase
+from django.db.models.functions import Lower
+from django.test import TestCase, skipUnlessDBFeature
 from django.utils import six
 
 from .models import (
-    Author, Book, Company, DepartmentStore, Employee, Publisher, Store,
+    Author, Book, Company, DepartmentStore, Employee, Publisher, Store, Ticket,
 )
 
 
-def cxOracle_513_py3_bug(func):
+def cxOracle_py3_bug(func):
     """
-    cx_Oracle versions up to and including 5.1.3 have a bug with respect to
-    string handling under Python3 (essentially, they treat Python3 strings
-    as Python2 strings rather than unicode). This makes some tests here
-    fail under Python 3 -- so we mark them as expected failures.
-
-    See  https://code.djangoproject.com/ticket/23843, in particular comment 6,
-    which points to https://bitbucket.org/anthony_tuininga/cx_oracle/issue/6/
+    There's a bug in Django/cx_Oracle with respect to string handling under
+    Python 3 (essentially, they treat Python 3 strings as Python 2 strings
+    rather than unicode). This makes some tests here fail under Python 3, so
+    we mark them as expected failures until someone fixes them in #23843.
     """
     from unittest import expectedFailure
     from django.db import connection
-
-    if connection.vendor == 'oracle' and six.PY3 and connection.Database.version <= '5.1.3':
-        return expectedFailure(func)
-    else:
-        return func
+    return expectedFailure(func) if connection.vendor == 'oracle' and six.PY3 else func
 
 
 class NonAggregateAnnotationTestCase(TestCase):
@@ -135,6 +130,24 @@ class NonAggregateAnnotationTestCase(TestCase):
         for book in books:
             self.assertEqual(book.num_awards, book.publisher.num_awards)
 
+    def test_mixed_type_annotation_date_interval(self):
+        active = datetime.datetime(2015, 3, 20, 14, 0, 0)
+        duration = datetime.timedelta(hours=1)
+        expires = datetime.datetime(2015, 3, 20, 14, 0, 0) + duration
+        Ticket.objects.create(active_at=active, duration=duration)
+        t = Ticket.objects.annotate(
+            expires=ExpressionWrapper(F('active_at') + F('duration'), output_field=DateTimeField())
+        ).first()
+        self.assertEqual(t.expires, expires)
+
+    def test_mixed_type_annotation_numbers(self):
+        test = self.b1
+        b = Book.objects.annotate(
+            combined=ExpressionWrapper(F('pages') + F('rating'), output_field=IntegerField())
+        ).get(isbn=test.isbn)
+        combined = int(test.pages + test.rating)
+        self.assertEqual(b.combined, combined)
+
     def test_annotate_with_aggregation(self):
         books = Book.objects.annotate(
             is_book=Value(1, output_field=IntegerField()),
@@ -147,6 +160,40 @@ class NonAggregateAnnotationTestCase(TestCase):
         agg = Author.objects.annotate(other_age=F('age')).aggregate(otherage_sum=Sum('other_age'))
         other_agg = Author.objects.aggregate(age_sum=Sum('age'))
         self.assertEqual(agg['otherage_sum'], other_agg['age_sum'])
+
+    @skipUnlessDBFeature('can_distinct_on_fields')
+    def test_distinct_on_with_annotation(self):
+        store = Store.objects.create(
+            name='test store',
+            original_opening=datetime.datetime.now(),
+            friday_night_closing=datetime.time(21, 00, 00),
+        )
+        names = [
+            'Theodore Roosevelt',
+            'Eleanor Roosevelt',
+            'Franklin Roosevelt',
+            'Ned Stark',
+            'Catelyn Stark',
+        ]
+        for name in names:
+            Employee.objects.create(
+                store=store,
+                first_name=name.split()[0],
+                last_name=name.split()[1],
+                age=30, salary=2000,
+            )
+
+        people = Employee.objects.annotate(
+            name_lower=Lower('last_name'),
+        ).distinct('name_lower')
+
+        self.assertEqual(set(p.last_name for p in people), {'Stark', 'Roosevelt'})
+        self.assertEqual(len(people), 2)
+
+        people2 = Employee.objects.annotate(
+            test_alias=F('store__name'),
+        ).distinct('test_alias')
+        self.assertEqual(len(people2), 1)
 
     def test_filter_annotation(self):
         books = Book.objects.annotate(
@@ -181,6 +228,14 @@ class NonAggregateAnnotationTestCase(TestCase):
             list(Book.objects.annotate(
                 sum_rating=Sum('rating')
             ).filter(sum_rating=F('nope')))
+
+    def test_combined_annotation_commutative(self):
+        book1 = Book.objects.annotate(adjusted_rating=F('rating') + 2).get(pk=self.b1.pk)
+        book2 = Book.objects.annotate(adjusted_rating=2 + F('rating')).get(pk=self.b1.pk)
+        self.assertEqual(book1.adjusted_rating, book2.adjusted_rating)
+        book1 = Book.objects.annotate(adjusted_rating=F('rating') + None).get(pk=self.b1.pk)
+        book2 = Book.objects.annotate(adjusted_rating=None + F('rating')).get(pk=self.b1.pk)
+        self.assertEqual(book1.adjusted_rating, book2.adjusted_rating)
 
     def test_update_with_annotation(self):
         book_preupdate = Book.objects.get(pk=self.b2.pk)
@@ -298,6 +353,10 @@ class NonAggregateAnnotationTestCase(TestCase):
             lambda a: (a['age'], a['age_count'])
         )
 
+    def test_annotate_exists(self):
+        authors = Author.objects.annotate(c=Count('id')).filter(c__gt=1)
+        self.assertFalse(authors.exists())
+
     def test_column_field_ordering(self):
         """
         Test that columns are aligned in the correct order for
@@ -356,7 +415,7 @@ class NonAggregateAnnotationTestCase(TestCase):
                 e.id, e.first_name, e.manager, e.random_value, e.last_name, e.age,
                 e.salary, e.store.name, e.annotated_value))
 
-    @cxOracle_513_py3_bug
+    @cxOracle_py3_bug
     def test_custom_functions(self):
         Company(name='Apple', motto=None, ticker_name='APPL', description='Beautiful Devices').save()
         Company(name='Django Software Foundation', motto=None, ticker_name=None, description=None).save()
@@ -382,7 +441,7 @@ class NonAggregateAnnotationTestCase(TestCase):
             lambda c: (c.name, c.tagline)
         )
 
-    @cxOracle_513_py3_bug
+    @cxOracle_py3_bug
     def test_custom_functions_can_ref_other_functions(self):
         Company(name='Apple', motto=None, ticker_name='APPL', description='Beautiful Devices').save()
         Company(name='Django Software Foundation', motto=None, ticker_name=None, description=None).save()

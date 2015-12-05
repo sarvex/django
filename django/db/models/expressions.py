@@ -42,8 +42,8 @@ class Combinable(object):
                 other = Value(other)
 
         if reversed:
-            return Expression(other, connector, self)
-        return Expression(self, connector, other)
+            return CombinedExpression(other, connector, self)
+        return CombinedExpression(self, connector, other)
 
     #############
     # OPERATORS #
@@ -126,11 +126,11 @@ class BaseExpression(object):
     # aggregate specific fields
     is_summary = False
 
-    def get_db_converters(self, connection):
-        return [self.convert_value] + self.output_field.get_db_converters(connection)
-
     def __init__(self, output_field=None):
         self._output_field = output_field
+
+    def get_db_converters(self, connection):
+        return [self.convert_value] + self.output_field.get_db_converters(connection)
 
     def get_source_expressions(self):
         return []
@@ -156,8 +156,8 @@ class BaseExpression(object):
         ```
         def override_as_sql(self, compiler, connection):
             # custom logic
-            return super(ExpressionNode, self).as_sql(compiler, connection)
-        setattr(ExpressionNode, 'as_' + connection.vendor, override_as_sql)
+            return super(Expression, self).as_sql(compiler, connection)
+        setattr(Expression, 'as_' + connection.vendor, override_as_sql)
         ```
 
         Arguments:
@@ -180,6 +180,13 @@ class BaseExpression(object):
                 return True
         return False
 
+    @cached_property
+    def contains_column_references(self):
+        for expr in self.get_source_expressions():
+            if expr and expr.contains_column_references:
+                return True
+        return False
+
     def resolve_expression(self, query=None, allow_joins=True, reuse=None, summarize=False, for_save=False):
         """
         Provides the chance to do any preprocessing or validation before being
@@ -193,7 +200,7 @@ class BaseExpression(object):
          * summarize: a terminal aggregate clause
          * for_save: whether this expression about to be used in a save or update
 
-        Returns: an ExpressionNode to be added to the query.
+        Returns: an Expression to be added to the query.
         """
         c = self.copy()
         c.is_summary = summarize
@@ -238,7 +245,16 @@ class BaseExpression(object):
         """
         Attempts to infer the output type of the expression. If the output
         fields of all source fields match then we can simply infer the same
-        type here.
+        type here. This isn't always correct, but it makes sense most of the
+        time.
+
+        Consider the difference between `2 + 2` and `2 / 3`. Inferring
+        the type here is a convenience for the common case. The user should
+        supply their own output_field with more complex computations.
+
+        If a source does not have an `_output_field` then we exclude it from
+        this check. If all sources are `None`, then an error will be thrown
+        higher up the stack in the `output_field` property.
         """
         if self._output_field is None:
             sources = self.get_source_fields()
@@ -246,8 +262,9 @@ class BaseExpression(object):
             if num_sources == 0:
                 self._output_field = None
             else:
-                self._output_field = sources[0]
                 for source in sources:
+                    if self._output_field is None:
+                        self._output_field = source
                     if source is not None and not isinstance(self._output_field, source.__class__):
                         raise FieldError(
                             "Expression contains mixed types. You must set output_field")
@@ -292,7 +309,7 @@ class BaseExpression(object):
         Does this expression contain a reference to some of the
         existing aggregates? If so, returns the aggregate and also
         the lookup parts that *weren't* found. So, if
-            exsiting_aggregates = {'max_id': Max('id')}
+            existing_aggregates = {'max_id': Max('id')}
             self.name = 'max_id'
             queryset.filter(max_id__range=[10,100])
         then this method will return Max('id') and those parts of the
@@ -329,18 +346,29 @@ class BaseExpression(object):
     def reverse_ordering(self):
         return self
 
+    def flatten(self):
+        """
+        Recursively yield this expression and all subexpressions, in
+        depth-first order.
+        """
+        yield self
+        for expr in self.get_source_expressions():
+            if expr:
+                for inner_expr in expr.flatten():
+                    yield inner_expr
 
-class ExpressionNode(BaseExpression, Combinable):
+
+class Expression(BaseExpression, Combinable):
     """
     An expression that can be combined with other expressions.
     """
     pass
 
 
-class Expression(ExpressionNode):
+class CombinedExpression(Expression):
 
     def __init__(self, lhs, connector, rhs, output_field=None):
-        super(Expression, self).__init__(output_field=output_field)
+        super(CombinedExpression, self).__init__(output_field=output_field)
         self.connector = connector
         self.lhs = lhs
         self.rhs = rhs
@@ -391,16 +419,17 @@ class Expression(ExpressionNode):
         return c
 
 
-class DurationExpression(Expression):
+class DurationExpression(CombinedExpression):
     def compile(self, side, compiler, connection):
         if not isinstance(side, DurationValue):
             try:
                 output = side.output_field
             except FieldError:
                 pass
-            if output.get_internal_type() == 'DurationField':
-                sql, params = compiler.compile(side)
-                return connection.ops.format_for_duration_arithmetic(sql), params
+            else:
+                if output.get_internal_type() == 'DurationField':
+                    sql, params = compiler.compile(side)
+                    return connection.ops.format_for_duration_arithmetic(sql), params
         return compiler.compile(side)
 
     def as_sql(self, compiler, connection):
@@ -446,15 +475,25 @@ class F(Combinable):
         return OrderBy(self, descending=True)
 
 
-class Func(ExpressionNode):
+class Func(Expression):
     """
     A SQL function call.
     """
     function = None
     template = '%(function)s(%(expressions)s)'
     arg_joiner = ', '
+    arity = None  # The number of arguments the function accepts.
 
     def __init__(self, *expressions, **extra):
+        if self.arity is not None and len(expressions) != self.arity:
+            raise TypeError(
+                "'%s' takes exactly %s %s (%s given)" % (
+                    self.__class__.__name__,
+                    self.arity,
+                    "argument" if self.arity == 1 else "arguments",
+                    len(expressions),
+                )
+            )
         output_field = extra.pop('output_field', None)
         super(Func, self).__init__(output_field=output_field)
         self.source_expressions = self._parse_expressions(*expressions)
@@ -496,6 +535,15 @@ class Func(ExpressionNode):
         template = template or self.extra.get('template', self.template)
         return template % self.extra, params
 
+    def as_sqlite(self, *args, **kwargs):
+        sql, params = self.as_sql(*args, **kwargs)
+        try:
+            if self.output_field.get_internal_type() == 'DecimalField':
+                sql = 'CAST(%s AS NUMERIC)' % sql
+        except FieldError:
+            pass
+        return sql, params
+
     def copy(self):
         copy = super(Func, self).copy()
         copy.source_expressions = self.source_expressions[:]
@@ -503,7 +551,7 @@ class Func(ExpressionNode):
         return copy
 
 
-class Value(ExpressionNode):
+class Value(Expression):
     """
     Represents a wrapped value as a node within an expression
     """
@@ -556,7 +604,7 @@ class DurationValue(Value):
         return connection.ops.date_interval_sql(self.value)
 
 
-class RawSQL(ExpressionNode):
+class RawSQL(Expression):
     def __init__(self, sql, params, output_field=None):
         if output_field is None:
             output_field = fields.Field()
@@ -573,7 +621,15 @@ class RawSQL(ExpressionNode):
         return [self]
 
 
-class Random(ExpressionNode):
+class Star(Expression):
+    def __repr__(self):
+        return "'*'"
+
+    def as_sql(self, compiler, connection):
+        return '*', []
+
+
+class Random(Expression):
     def __init__(self):
         super(Random, self).__init__(output_field=fields.FloatField())
 
@@ -584,7 +640,10 @@ class Random(ExpressionNode):
         return connection.ops.random_function_sql(), []
 
 
-class Col(ExpressionNode):
+class Col(Expression):
+
+    contains_column_references = True
+
     def __init__(self, alias, target, output_field=None):
         if output_field is None:
             output_field = target
@@ -612,7 +671,7 @@ class Col(ExpressionNode):
                 self.target.get_db_converters(connection))
 
 
-class Ref(ExpressionNode):
+class Ref(Expression):
     """
     Reference to column alias of the query. For example, Ref('sum_cost') in
     qs.annotate(sum_cost=Sum('cost')) query.
@@ -645,7 +704,30 @@ class Ref(ExpressionNode):
         return [self]
 
 
-class When(ExpressionNode):
+class ExpressionWrapper(Expression):
+    """
+    An expression that can wrap another expression so that it can provide
+    extra context to the inner expression, such as the output_field.
+    """
+
+    def __init__(self, expression, output_field):
+        super(ExpressionWrapper, self).__init__(output_field=output_field)
+        self.expression = expression
+
+    def set_source_expressions(self, exprs):
+        self.expression = exprs[0]
+
+    def get_source_expressions(self):
+        return [self.expression]
+
+    def as_sql(self, compiler, connection):
+        return self.expression.as_sql(compiler, connection)
+
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__, self.expression)
+
+
+class When(Expression):
     template = 'WHEN %(condition)s THEN %(result)s'
 
     def __init__(self, condition=None, then=None, **lookups):
@@ -701,7 +783,7 @@ class When(ExpressionNode):
         return cols
 
 
-class Case(ExpressionNode):
+class Case(Expression):
     """
     An SQL searched CASE expression:
 
@@ -746,6 +828,11 @@ class Case(ExpressionNode):
         c.default = c.default.resolve_expression(query, allow_joins, reuse, summarize, for_save)
         return c
 
+    def copy(self):
+        c = super(Case, self).copy()
+        c.cases = c.cases[:]
+        return c
+
     def as_sql(self, compiler, connection, template=None, extra=None):
         connection.ops.check_expression_support(self)
         if not self.cases:
@@ -768,7 +855,7 @@ class Case(ExpressionNode):
         return sql, sql_params
 
 
-class Date(ExpressionNode):
+class Date(Expression):
     """
     Add a date selection column.
     """
@@ -815,7 +902,7 @@ class Date(ExpressionNode):
         return value
 
 
-class DateTime(ExpressionNode):
+class DateTime(Expression):
     """
     Add a datetime selection column.
     """
@@ -895,8 +982,10 @@ class OrderBy(BaseExpression):
     def as_sql(self, compiler, connection):
         connection.ops.check_expression_support(self)
         expression_sql, params = compiler.compile(self.expression)
-        placeholders = {'expression': expression_sql}
-        placeholders['ordering'] = 'DESC' if self.descending else 'ASC'
+        placeholders = {
+            'expression': expression_sql,
+            'ordering': 'DESC' if self.descending else 'ASC',
+        }
         return (self.template % placeholders).rstrip(), params
 
     def get_group_by_cols(self):

@@ -12,7 +12,9 @@ from django.contrib.auth.tests.custom_user import CustomUser, ExtensionUser
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
 from django.http import HttpRequest
-from django.test import TestCase, modify_settings, override_settings
+from django.test import (
+    SimpleTestCase, TestCase, modify_settings, override_settings,
+)
 
 from .models import CustomPermissionsUser, UUIDUser
 
@@ -248,7 +250,7 @@ class ExtensionUserModelBackendTest(BaseModelBackendTest, TestCase):
         )
 
 
-@override_settings(AUTH_USER_MODEL='auth.CustomPermissionsUser')
+@override_settings(AUTH_USER_MODEL='auth_tests.CustomPermissionsUser')
 class CustomPermissionsUserModelBackendTest(BaseModelBackendTest, TestCase):
     """
     Tests for the ModelBackend using the CustomPermissionsUser model.
@@ -290,7 +292,7 @@ class CustomUserModelBackendAuthenticateTest(TestCase):
         self.assertEqual(test_user, authenticated_user)
 
 
-@override_settings(AUTH_USER_MODEL='auth.UUIDUser')
+@override_settings(AUTH_USER_MODEL='auth_tests.UUIDUser')
 class UUIDUserTests(TestCase):
 
     def test_login(self):
@@ -394,7 +396,7 @@ class RowlevelBackendTest(TestCase):
 @override_settings(
     AUTHENTICATION_BACKENDS=['auth_tests.test_auth_backends.SimpleRowlevelBackend'],
 )
-class AnonymousUserBackendTest(TestCase):
+class AnonymousUserBackendTest(SimpleTestCase):
     """
     Tests for AnonymousUser delegating to backend.
     """
@@ -454,9 +456,6 @@ class PermissionDeniedBackend(object):
     """
     Always raises PermissionDenied in `authenticate`, `has_perm` and `has_module_perms`.
     """
-    supports_object_permissions = True
-    supports_anonymous_user = True
-    supports_inactive_user = True
 
     def authenticate(self, username=None, password=None):
         raise PermissionDenied
@@ -558,9 +557,6 @@ class TypeErrorBackend(object):
     """
     Always raises TypeError.
     """
-    supports_object_permissions = True
-    supports_anonymous_user = True
-    supports_inactive_user = True
 
     def authenticate(self, username=None, password=None):
         raise TypeError

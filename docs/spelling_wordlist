@@ -79,6 +79,7 @@ Boersma
 boilerplatish
 Bokmål
 bolded
+bookmarklet
 bookmarklets
 Bookmarklets
 boolean
@@ -304,7 +305,7 @@ Gettext
 GiB
 gid
 gis
-github
+GitHub
 globalization
 Godwin
 google
@@ -330,6 +331,7 @@ headerlist
 hoc
 Hoerner
 Holovaty
+Holscher
 Homebrew
 honeypot
 Honza
@@ -348,8 +350,6 @@ iendswith
 ies
 iexact
 ifchanged
-ifequal
-ifnotequal
 iframe
 inbox
 Incompliance
@@ -389,7 +389,7 @@ itunes
 iTunes
 ize
 Jannis
-javascript
+JavaScript
 Jinja
 jQuery
 JServ
@@ -421,6 +421,7 @@ linebreaks
 linebreaksbr
 linenumbers
 linestring
+linework
 Livni
 ljust
 loaddata
@@ -436,6 +437,7 @@ Login
 logout
 Logout
 Loïc
+lookaround
 lookup
 Lookup
 lookups
@@ -453,6 +455,7 @@ makemessages
 makemigrations
 Mako
 Mapnik
+Marczewski
 Marino
 Markus
 MBR
@@ -490,6 +493,7 @@ Multi
 multicolumn
 multijoins
 multiline
+multilinestring
 multipart
 multipolygon
 multithreaded
@@ -512,10 +516,12 @@ naturalday
 naturaltime
 nd
 needsinfo
+německy
 nestable
 neuroscientist
 newforms
 nginx
+noding
 nonspatial
 nullable
 OAuth
@@ -541,6 +547,7 @@ Palau
 parameterized
 params
 parens
+Paweł
 pdf
 PEM
 perl
@@ -551,7 +558,7 @@ Peucker
 pgAdmin
 phishing
 php
-pickleable
+picklable
 picosecond
 PIL
 pingback
@@ -575,6 +582,7 @@ postgresql
 pq
 pre
 precisions
+precomputation
 preconfigured
 prefetch
 prefetched
@@ -599,6 +607,7 @@ proxied
 proxying
 pseudocode
 psycopg
+Punycode
 Puthraya
 py
 pyformat
@@ -615,10 +624,13 @@ Querysets
 querystring
 queueing
 Quickstart
+QUnit
 quo
 quoteless
 Radziej
 rc
+readded
+reallowed
 rebase
 rebased
 rebasing
@@ -636,6 +648,7 @@ refactoring
 refactorings
 refactors
 referer
+referers
 reflow
 regex
 regexes
@@ -654,6 +667,7 @@ repo
 reportable
 reprojection
 reraise
+resampling
 reST
 reStructuredText
 reupload
@@ -682,6 +696,8 @@ screenshots
 sdist
 semimajor
 semiminor
+Sendecka
+sendtestemail
 serializability
 serializable
 serializer
@@ -758,6 +774,7 @@ submodule
 submodules
 subpackage
 subpackages
+subpath
 subqueries
 subquery
 subselect
@@ -766,6 +783,7 @@ substring
 Substring
 subtemplate
 subtemplates
+subtransactions
 subtree
 subtype
 subviews
@@ -812,6 +830,7 @@ timezones
 titlecase
 tmp
 tokenized
+Tomek
 toolbar
 toolkits
 toolset
@@ -855,10 +874,12 @@ unglamorous
 ungrouped
 unhandled
 unharmful
+unhashable
 unicode
 uninstall
 uninstalling
 uninstalls
+unioning
 uniterated
 unittest
 unittests
@@ -916,10 +937,10 @@ versioning
 vertices
 viewable
 virtualenv
+virtualenvs
 virtualized
 Votizen
 webapps
-webdesign
 webkit
 WebKit
 Weblog

@@ -6,7 +6,7 @@ from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth.models import User as AuthUser
 from django.contrib.contenttypes.models import ContentType
-from django.core import checks, exceptions, management
+from django.core import checks, management
 from django.core.urlresolvers import reverse
 from django.db import DEFAULT_DB_ALIAS, models
 from django.db.models import signals
@@ -33,7 +33,7 @@ class ProxyModelTests(TestCase):
             DEFAULT_DB_ALIAS).as_sql()
         self.assertEqual(my_person_sql, person_sql)
 
-    def test_inheretance_new_table(self):
+    def test_inheritance_new_table(self):
         """
         The StatusPerson models should have its own table (it's using ORM-level
         inheritance).
@@ -332,13 +332,18 @@ class ProxyModelTests(TestCase):
         self.assertEqual(resp.name, 'New South Wales')
 
     def test_filter_proxy_relation_reverse(self):
-        tu = TrackerUser.objects.create(
-            name='Contributor', status='contrib')
-        with self.assertRaises(exceptions.FieldError):
-            TrackerUser.objects.filter(issue=None),
+        tu = TrackerUser.objects.create(name='Contributor', status='contrib')
+        ptu = ProxyTrackerUser.objects.get()
+        issue = Issue.objects.create(assignee=tu)
+        self.assertEqual(tu.issues.get(), issue)
+        self.assertEqual(ptu.issues.get(), issue)
         self.assertQuerysetEqual(
-            ProxyTrackerUser.objects.filter(issue=None),
+            TrackerUser.objects.filter(issues=issue),
             [tu], lambda x: x
+        )
+        self.assertQuerysetEqual(
+            ProxyTrackerUser.objects.filter(issues=issue),
+            [ptu], lambda x: x
         )
 
     def test_proxy_bug(self):
@@ -433,17 +438,17 @@ class ProxyModelAdminTests(TestCase):
         proxy = ProxyTrackerUser.objects.get(name='Django Pony')
 
         user_str = 'Tracker user: <a href="%s">%s</a>' % (
-            reverse('admin:proxy_models_trackeruser_change', args=(user.pk,)), user
+            reverse('admin_proxy:proxy_models_trackeruser_change', args=(user.pk,)), user
         )
         proxy_str = 'Proxy tracker user: <a href="%s">%s</a>' % (
-            reverse('admin:proxy_models_proxytrackeruser_change', args=(proxy.pk,)), proxy
+            reverse('admin_proxy:proxy_models_proxytrackeruser_change', args=(proxy.pk,)), proxy
         )
 
         self.client.login(username='super', password='secret')
-        response = self.client.get(reverse('admin:proxy_models_trackeruser_delete', args=(user.pk,)))
+        response = self.client.get(reverse('admin_proxy:proxy_models_trackeruser_delete', args=(user.pk,)))
         delete_str = response.context['deleted_objects'][0]
         self.assertEqual(delete_str, user_str)
-        response = self.client.get(reverse('admin:proxy_models_proxytrackeruser_delete', args=(proxy.pk,)))
+        response = self.client.get(reverse('admin_proxy:proxy_models_proxytrackeruser_delete', args=(proxy.pk,)))
         delete_str = response.context['deleted_objects'][0]
         self.assertEqual(delete_str, proxy_str)
         self.client.logout()

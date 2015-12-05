@@ -41,6 +41,8 @@ interact with installed applications, mainly for configuration and also for
 introspection. That's why the application registry maintains metadata in an
 :class:`~django.apps.AppConfig` instance for each installed application.
 
+.. _configuring-applications-ref:
+
 Configuring applications
 ========================
 
@@ -56,6 +58,14 @@ subclass for that application.
 
 If there is no ``default_app_config``, Django uses the base
 :class:`~django.apps.AppConfig` class.
+
+``default_app_config`` allows applications that predate Django 1.7 such as
+``django.contrib.admin`` to opt-in to :class:`~django.apps.AppConfig` features
+without requiring users to update their :setting:`INSTALLED_APPS`.
+
+New applications should avoid ``default_app_config``. Instead they should
+require the dotted path to the appropriate :class:`~django.apps.AppConfig`
+subclass to be configured explicitly in :setting:`INSTALLED_APPS`.
 
 For application authors
 -----------------------
@@ -81,7 +91,9 @@ subclass by default as follows::
 That will cause ``RockNRollConfig`` to be used when :setting:`INSTALLED_APPS`
 just contains ``'rock_n_roll'``. This allows you to make use of
 :class:`~django.apps.AppConfig` features without requiring your users to
-update their :setting:`INSTALLED_APPS` setting.
+update their :setting:`INSTALLED_APPS` setting. Besides this use case, it's
+best to avoid using ``default_app_config`` and instead specify the app config
+class in :setting:`INSTALLED_APPS` as described next.
 
 Of course, you can also tell your users to put
 ``'rock_n_roll.apps.RockNRollConfig'`` in their :setting:`INSTALLED_APPS`
@@ -202,13 +214,14 @@ Methods
 
 .. method:: AppConfig.get_models()
 
-    Returns an iterable of :class:`~django.db.models.Model` classes.
+    Returns an iterable of :class:`~django.db.models.Model` classes for this
+    application.
 
 .. method:: AppConfig.get_model(model_name)
 
     Returns the :class:`~django.db.models.Model` with the given
-    ``model_name``. Raises :exc:`LookupError` if no such model exists.
-    ``model_name`` is case-insensitive.
+    ``model_name``. Raises :exc:`LookupError` if no such model exists in this
+    application. ``model_name`` is case-insensitive.
 
 .. method:: AppConfig.ready()
 
@@ -321,13 +334,19 @@ application registry.
 
 .. currentmodule:: django
 
-.. function:: setup()
+.. function:: setup(set_script=True)
 
     Configures Django by:
 
     * Loading the settings.
     * Setting up logging.
+    * If ``set_script`` is True, setting the URL resolver script prefix to
+      :setting:`FORCE_SCRIPT_NAME` if defined, or ``/`` otherwise.
     * Initializing the application registry.
+
+    .. versionchanged:: 1.10
+
+        The ability to set the URL resolver script prefix is new.
 
     This function is called automatically:
 

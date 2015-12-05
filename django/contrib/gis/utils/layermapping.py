@@ -4,7 +4,7 @@
  vector files (e.g. SHP files) to Geographic-enabled Django models.
 
  For more information, please consult the GeoDjango documentation:
-   http://geodjango.org/docs/layermapping.html
+   https://docs.djangoproject.com/en/dev/ref/contrib/gis/layermapping/
 """
 import sys
 from decimal import Decimal, InvalidOperation as DecimalInvalidOperation
@@ -229,7 +229,7 @@ class LayerMapping(object):
             elif isinstance(model_field, models.ForeignKey):
                 if isinstance(ogr_name, dict):
                     # Is every given related model mapping field in the Layer?
-                    rel_model = model_field.rel.to
+                    rel_model = model_field.remote_field.model
                     for rel_name, ogr_field in ogr_name.items():
                         idx = check_ogr_fld(ogr_field)
                         try:
@@ -619,7 +619,7 @@ class LayerMapping(object):
                 try:
                     num_feat, num_saved = _save(step_slice, num_feat, num_saved)
                     beg = end
-                except:  # Deliberately catch everything
+                except Exception:  # Deliberately catch everything
                     stream.write('%s\nFailed to save slice: %s\n' % ('=-' * 20, step_slice))
                     raise
         else:

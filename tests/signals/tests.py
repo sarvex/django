@@ -168,7 +168,7 @@ class SignalTests(BaseSignalTest):
             data.append(instance)
 
         try:
-            c1 = Car.objects.create(make="Volkswagon", model="Passat")
+            c1 = Car.objects.create(make="Volkswagen", model="Passat")
             self.assertEqual(data, [c1, c1])
         finally:
             signals.pre_save.disconnect(decorated_handler)
@@ -222,9 +222,9 @@ class SignalTests(BaseSignalTest):
             data[:] = []
 
             # Assigning and removing to/from m2m shouldn't generate an m2m signal.
-            b1.authors = [a1]
+            b1.authors.set([a1])
             self.assertEqual(data, [])
-            b1.authors = []
+            b1.authors.set([])
             self.assertEqual(data, [])
         finally:
             signals.pre_save.disconnect(pre_save_handler)

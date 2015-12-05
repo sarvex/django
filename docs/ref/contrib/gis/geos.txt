@@ -17,7 +17,7 @@ implements the OpenGIS `Simple Features for SQL`__ spatial predicate functions
 and spatial operators. GEOS, now an OSGeo project, was initially developed and
 maintained by `Refractions Research`__ of Victoria, Canada.
 
-__ http://trac.osgeo.org/geos/
+__ https://trac.osgeo.org/geos/
 __ http://sourceforge.net/projects/jts-topo-suite/
 __ http://www.opengeospatial.org/standards/sfs
 __ http://www.refractions.net/
@@ -65,11 +65,20 @@ created by passing in the X and Y coordinates into its constructor::
     >>> from django.contrib.gis.geos import Point
     >>> pnt = Point(5, 23)
 
-Finally, there are :func:`fromstr` and :func:`fromfile` factory methods, which
-return a :class:`GEOSGeometry` object from an input string or a file::
+All these constructors take the keyword argument ``srid``. For example::
 
-    >>> from django.contrib.gis.geos import fromstr, fromfile
-    >>> pnt = fromstr('POINT(5 23)')
+    >>> from django.contrib.gis.geos import GEOSGeometry, LineString, Point
+    >>> print(GEOSGeometry('POINT (0 0)', srid=4326))
+    SRID=4326;POINT (0.0000000000000000 0.0000000000000000)
+    >>> print(LineString((0, 0), (1, 1), srid=4326))
+    SRID=4326;LINESTRING (0.0000000000000000 0.0000000000000000, 1.0000000000000000 1.0000000000000000)
+    >>> print(Point(0, 0, srid=32140))
+    SRID=32140;POINT (0.0000000000000000 0.0000000000000000)
+
+Finally, there is the :func:`fromfile` factory method which returns a
+:class:`GEOSGeometry` object from a file::
+
+    >>> from django.contrib.gis.geos import fromfile
     >>> pnt = fromfile('/path/to/pnt.wkt')
     >>> pnt = fromfile(open('/path/to/pnt.wkt'))
 
@@ -132,13 +141,42 @@ just like a Python list::
     >>> line.coords
     ((1.0, 1.0), (0.0, 50.0), (50.0, 50.0), (50.0, 0.0), (1.0, 1.0))
 
+Geometries support set-like operators::
+
+    >>> from django.contrib.gis.geos import LineString
+    >>> ls1 = LineString((0, 0), (2, 2))
+    >>> ls2 = LineString((1, 1), (3, 3))
+    >>> print(ls1 | ls2)  # equivalent to `ls1.union(ls2)`
+    MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (2 2, 3 3))
+    >>> print(ls1 & ls2)  # equivalent to `ls1.intersection(ls2)`
+    LINESTRING (1 1, 2 2)
+    >>> print(ls1 - ls2)  # equivalent to `ls1.difference(ls2)`
+    LINESTRING(0 0, 1 1)
+    >>> print(ls1 ^ ls2)  # equivalent to `ls1.sym_difference(ls2)`
+    MULTILINESTRING ((0 0, 1 1), (2 2, 3 3))
+
+.. admonition:: Equality operator doesn't check spatial equality
+
+    The :class:`~GEOSGeometry` equality operator uses
+    :meth:`~GEOSGeometry.equals_exact`, not :meth:`~GEOSGeometry.equals`, i.e.
+    it requires the compared geometries to have the same coordinates in the
+    same positions::
+
+      >>> from django.contrib.gis.geos import LineString
+      >>> ls1 = LineString((0, 0), (1, 1))
+      >>> ls2 = LineString((1, 1), (0, 0))
+      >>> ls1.equals(ls2)
+      True
+      >>> ls1 == ls2
+      False
+
 Geometry Objects
 ================
 
 ``GEOSGeometry``
 ----------------
 
-.. class:: GEOSGeometry(geo_input[, srid=None])
+.. class:: GEOSGeometry(geo_input, srid=None)
 
   :param geo_input: Geometry input value (string or buffer)
   :param srid: spatial reference identifier
@@ -160,17 +198,23 @@ WKB / EWKB     ``buffer``
 GeoJSON        ``str`` or ``unicode``
 =============  ======================
 
-.. note::
-
-    The new 3D/4D WKT notation with an intermediary Z or M (like
-    ``POINT Z (3, 4, 5)``) is only supported with GEOS 3.3.0 or later.
-
 Properties
 ~~~~~~~~~~
 
 .. attribute:: GEOSGeometry.coords
 
 Returns the coordinates of the geometry as a tuple.
+
+.. attribute:: GEOSGeometry.dims
+
+Returns the dimension of the geometry:
+
+* ``0`` for :class:`Point`\s and :class:`MultiPoint`\s
+* ``1`` for :class:`LineString`\s and :class:`MultiLineString`\s
+* ``2`` for :class:`Polygon`\s and :class:`MultiPolygon`\s
+* ``-1`` for empty :class:`GeometryCollection`\s
+* the maximum dimension of its elements for non-empty
+  :class:`GeometryCollection`\s
 
 .. attribute:: GEOSGeometry.empty
 
@@ -282,7 +326,9 @@ that are a part of this geometry.
 
 .. attribute:: GEOSGeometry.json
 
-Returns the GeoJSON representation of the geometry.
+Returns the GeoJSON representation of the geometry. Note that the result is not
+a complete GeoJSON structure but only the ``geometry`` key content of a
+GeoJSON structure. See also :doc:`/ref/contrib/gis/serializers`.
 
 .. note::
 
@@ -338,7 +384,30 @@ return a boolean.
 
 .. method:: GEOSGeometry.contains(other)
 
-Returns ``True`` if :meth:`GEOSGeometry.within` is ``False``.
+Returns ``True`` if :meth:`other.within(this) <GEOSGeometry.within>` returns
+``True``.
+
+.. method:: GEOSGeometry.covers(other)
+
+.. versionadded:: 1.10
+
+Returns ``True`` if this geometry covers the specified geometry.
+
+The ``covers`` predicate has the following equivalent definitions:
+
+* Every point of the other geometry is a point of this geometry.
+* The DE-9IM Intersection Matrix for the two geometries is
+  ``T*****FF*``, ``*T****FF*``, ``***T**FF*``, or ``****T*FF*``.
+
+If either geometry is empty, returns ``False``.
+
+This predicate is similar to :meth:`GEOSGeometry.contains`, but is more
+inclusive (i.e. returns ``True`` for more cases). In particular, unlike
+:meth:`~GEOSGeometry.contains` it does not distinguish between points in the
+boundary and in the interior of geometries. For most situations, ``covers()``
+should be preferred to :meth:`~GEOSGeometry.contains`. As an added benefit,
+``covers()`` is more amenable to optimization and hence should outperform
+:meth:`~GEOSGeometry.contains`.
 
 .. method:: GEOSGeometry.crosses(other)
 
@@ -488,6 +557,21 @@ geometry is a point.
 Computes and returns a :class:`Point` guaranteed to be on the interior
 of this geometry.
 
+.. attribute:: GEOSGeometry.unary_union
+
+.. versionadded:: 1.10
+
+Computes the union of all the elements of this geometry.
+
+The result obeys the following contract:
+
+* Unioning a set of :class:`LineString`\s has the effect of fully noding and
+  dissolving the linework.
+
+* Unioning a set of :class:`Polygon`\s will always return a :class:`Polygon` or
+  :class:`MultiPolygon` geometry (unlike :meth:`GEOSGeometry.union`, which may
+  return geometries of lower dimension if a topology collapse occurs).
+
 Other Properties & Methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -550,7 +634,15 @@ is returned instead.
 .. note::
 
     Requires GDAL. Raises :class:`~django.contrib.gis.geos.GEOSException` if
-    GDAL is not available or if the SRID is ``None`` or less than 0.
+    GDAL is not available or if the geometry's SRID is ``None`` or less than 0.
+    It doesn't impose any constraints on the geometry's SRID if called with a
+    :class:`~django.contrib.gis.gdal.CoordTransform` object.
+
+    .. versionchanged:: 1.10
+
+        In previous versions, it required the geometry's SRID to be a positive
+        integer even if it was called with a
+        :class:`~django.contrib.gis.gdal.CoordTransform` object.
 
 ``Point``
 ---------
@@ -683,6 +775,10 @@ Geometry Collections
 
    .. attribute:: cascaded_union
 
+   .. deprecated:: 1.10
+
+      Use the :attr:`GEOSGeometry.unary_union` property instead.
+
    Returns a :class:`Polygon` that is the union of all of the component
    polygons in this collection.  The algorithm employed is significantly
    more efficient (faster) than trying to union the geometries together
@@ -712,7 +808,7 @@ In order to obtain a prepared geometry, just access the
 may be used with other ``GEOSGeometry`` objects.  An operation with a prepared
 geometry can be orders of magnitude faster -- the more complex the geometry
 that is prepared, the larger the speedup in the operation.  For more information,
-please consult the `GEOS wiki page on prepared geometries <http://trac.osgeo.org/geos/wiki/PreparedGeometry>`_.
+please consult the `GEOS wiki page on prepared geometries <https://trac.osgeo.org/geos/wiki/PreparedGeometry>`_.
 
 For example::
 
@@ -738,35 +834,15 @@ For example::
 
   .. method:: crosses(other)
 
-    .. note::
-
-       GEOS 3.3 is *required* to use this predicate.
-
   .. method:: disjoint(other)
-
-    .. note::
-
-       GEOS 3.3 is *required* to use this predicate.
 
   .. method:: intersects(other)
 
   .. method:: overlaps(other)
 
-    .. note::
-
-       GEOS 3.3 is *required* to use this predicate.
-
   .. method:: touches(other)
 
-    .. note::
-
-       GEOS 3.3 is *required* to use this predicate.
-
   .. method:: within(other)
-
-    .. note::
-
-       GEOS 3.3 is *required* to use this predicate.
 
 Geometry Factories
 ==================
@@ -782,13 +858,16 @@ Example::
     >>> from django.contrib.gis.geos import fromfile
     >>> g = fromfile('/home/bob/geom.wkt')
 
-.. function:: fromstr(string, [,srid=None])
+.. function:: fromstr(string, srid=None)
 
    :param string: string that contains spatial data
    :type string: string
    :param srid: spatial reference identifier
    :type srid: int
    :rtype: a :class:`GEOSGeometry` corresponding to the spatial data in the string
+
+``fromstr(string, srid)`` is equivalent to :class:`GEOSGeometry(string, srid)
+<GEOSGeometry>`.
 
 Example::
 

@@ -12,25 +12,17 @@ Django Core Exceptions
 
 Django core exception classes are defined in ``django.core.exceptions``.
 
-``ObjectDoesNotExist`` and ``DoesNotExist``
--------------------------------------------
-
-.. exception:: DoesNotExist
-
-    The ``DoesNotExist`` exception is raised when an object is not found for
-    the given parameters of a query. Django provides a ``DoesNotExist``
-    exception as an attribute of each model class to identify the class of
-    object that could not be found and to allow you to catch a particular model
-    class with ``try/except``.
+``ObjectDoesNotExist``
+----------------------
 
 .. exception:: ObjectDoesNotExist
 
-    The base class for ``DoesNotExist`` exceptions; a ``try/except`` for
-    ``ObjectDoesNotExist`` will catch ``DoesNotExist`` exceptions for all
-    models.
+    The base class for :exc:`~django.db.models.Model.DoesNotExist` exceptions;
+    a ``try/except`` for ``ObjectDoesNotExist`` will catch
+    :exc:`~django.db.models.Model.DoesNotExist` exceptions for all models.
 
     See :meth:`~django.db.models.query.QuerySet.get()` for further information
-    on :exc:`ObjectDoesNotExist` and :exc:`DoesNotExist`.
+    on :exc:`ObjectDoesNotExist` and :exc:`~django.db.models.Model.DoesNotExist`.
 
 ``FieldDoesNotExist``
 ---------------------
@@ -40,11 +32,6 @@ Django core exception classes are defined in ``django.core.exceptions``.
     The ``FieldDoesNotExist`` exception is raised by a model's
     ``_meta.get_field()`` method when the requested field does not exist on the
     model or on the model's parents.
-
-    .. versionchanged:: 1.8
-
-        This exception was previously defined only in
-        ``django.db.models.fields`` and wasn't part of the public API.
 
 ``MultipleObjectsReturned``
 ---------------------------
@@ -209,7 +196,13 @@ As per :pep:`3134`, a ``__cause__`` attribute is set with the original
 (underlying) database exception, allowing access to any additional
 information provided. (Note that this attribute is available under
 both Python 2 and Python 3, although :pep:`3134` normally only applies
-to Python 3.)
+to Python 3. To avoid unexpected differences with Python 3, Django will also
+ensure that the exception made available via ``__cause__`` has a usable
+``__traceback__`` attribute.)
+
+.. versionchanged:: 1.10
+
+    The ``__traceback__`` attribute described above was added.
 
 .. exception:: models.ProtectedError
 
@@ -257,8 +250,6 @@ Exceptions provided by the ``django.test`` package.
 ----------------------
 
 .. exception:: client.RedirectCycleError
-
-    .. versionadded:: 1.8
 
     :exc:`~client.RedirectCycleError` is raised when the test client detects a
     loop or an overly long chain of redirects.

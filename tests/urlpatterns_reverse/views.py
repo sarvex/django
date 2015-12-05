@@ -10,10 +10,6 @@ def empty_view(request, *args, **kwargs):
     return HttpResponse('')
 
 
-def kwargs_view(request, arg1=1, arg2=2):
-    return HttpResponse('')
-
-
 def absolute_kwargs_view(request, arg1=1, arg2=2):
     return HttpResponse('')
 
@@ -35,7 +31,7 @@ def pass_resolver_match_view(request, *args, **kwargs):
     response.resolver_match = request.resolver_match
     return response
 
-uncallable = "Can I be a view? Pleeeease?"
+uncallable = None  # neither a callable nor a string
 
 
 class ViewClass(object):

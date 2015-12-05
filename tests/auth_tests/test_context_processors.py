@@ -5,7 +5,7 @@ from django.contrib.auth.context_processors import PermLookupDict, PermWrapper
 from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from .settings import AUTH_MIDDLEWARE_CLASSES, AUTH_TEMPLATES
 
@@ -22,7 +22,7 @@ class MockUser(object):
         return False
 
 
-class PermWrapperTests(TestCase):
+class PermWrapperTests(SimpleTestCase):
     """
     Test some details of the PermWrapper implementation.
     """
@@ -74,7 +74,7 @@ class AuthContextProcessorTests(TestCase):
     def setUpTestData(cls):
         # password = "secret"
         cls.u1 = User.objects.create(
-            id=100, password='sha1$995a3$6011485ea3834267d719b4c801409b8b1ddd0158',
+            password='sha1$995a3$6011485ea3834267d719b4c801409b8b1ddd0158',
             last_login=datetime.datetime(2007, 5, 30, 13, 20, 10), is_superuser=True, username='super',
             first_name='Super', last_name='User', email='super@example.com',
             is_staff=True, is_active=True, date_joined=datetime.datetime(2007, 5, 30, 13, 20, 10)
@@ -138,7 +138,7 @@ class AuthContextProcessorTests(TestCase):
         user = authenticate(username='super', password='secret')
         response = self.client.get('/auth_processor_user/')
         self.assertContains(response, "unicode: super")
-        self.assertContains(response, "id: 100")
+        self.assertContains(response, "id: %d" % self.u1.pk)
         self.assertContains(response, "username: super")
         # bug #12037 is tested by the {% url %} in the template:
         self.assertContains(response, "url: /userpage/super/")

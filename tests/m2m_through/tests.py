@@ -97,7 +97,7 @@ class M2mThroughTests(TestCase):
         members = list(Person.objects.filter(name__in=['Bob', 'Jim']))
 
         with self.assertRaisesMessage(AttributeError, msg):
-            setattr(self.rock, 'members', members)
+            self.rock.members.set(members)
 
         self.assertQuerysetEqual(
             self.rock.members.all(),
@@ -166,7 +166,7 @@ class M2mThroughTests(TestCase):
         members = list(Group.objects.filter(name__in=['Rock', 'Roll']))
 
         with self.assertRaisesMessage(AttributeError, msg):
-            setattr(self.bob, 'group_set', members)
+            self.bob.group_set.set(members)
 
         self.assertQuerysetEqual(
             self.bob.group_set.all(),
@@ -346,7 +346,7 @@ class M2mThroughReferentialTests(TestCase):
             []
         )
 
-    def test_self_referential_non_symmentrical_first_side(self):
+    def test_self_referential_non_symmetrical_first_side(self):
         tony = PersonSelfRefM2M.objects.create(name="Tony")
         chris = PersonSelfRefM2M.objects.create(name="Chris")
         Friendship.objects.create(
@@ -359,7 +359,7 @@ class M2mThroughReferentialTests(TestCase):
             attrgetter("name")
         )
 
-    def test_self_referential_non_symmentrical_second_side(self):
+    def test_self_referential_non_symmetrical_second_side(self):
         tony = PersonSelfRefM2M.objects.create(name="Tony")
         chris = PersonSelfRefM2M.objects.create(name="Chris")
         Friendship.objects.create(
@@ -371,7 +371,7 @@ class M2mThroughReferentialTests(TestCase):
             []
         )
 
-    def test_self_referential_non_symmentrical_clear_first_side(self):
+    def test_self_referential_non_symmetrical_clear_first_side(self):
         tony = PersonSelfRefM2M.objects.create(name="Tony")
         chris = PersonSelfRefM2M.objects.create(name="Chris")
         Friendship.objects.create(
@@ -392,7 +392,7 @@ class M2mThroughReferentialTests(TestCase):
             attrgetter("name")
         )
 
-    def test_self_referential_symmentrical(self):
+    def test_self_referential_symmetrical(self):
         tony = PersonSelfRefM2M.objects.create(name="Tony")
         chris = PersonSelfRefM2M.objects.create(name="Chris")
         Friendship.objects.create(

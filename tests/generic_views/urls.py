@@ -65,6 +65,8 @@ urlpatterns = [
     # FormView
     url(r'^contact/$',
         views.ContactView.as_view()),
+    url(r'^late-validation/$',
+        views.LateValidationView.as_view()),
 
     # Create/UpdateView
     url(r'^edit/artists/create/$',
@@ -77,7 +79,7 @@ urlpatterns = [
     url(r'^edit/authors/create/redirect/$',
         views.NaiveAuthorCreate.as_view(success_url='/edit/authors/create/')),
     url(r'^edit/authors/create/interpolate_redirect/$',
-        views.NaiveAuthorCreate.as_view(success_url='/edit/author/%(id)d/update/')),
+        views.NaiveAuthorCreate.as_view(success_url='/edit/author/{id}/update/')),
     url(r'^edit/authors/create/interpolate_redirect_nonascii/$',
         views.NaiveAuthorCreate.as_view(success_url='/%C3%A9dit/author/{id}/update/')),
     url(r'^edit/authors/create/restricted/$',
@@ -92,7 +94,7 @@ urlpatterns = [
     url(r'^edit/author/(?P<pk>[0-9]+)/update/redirect/$',
         views.NaiveAuthorUpdate.as_view(success_url='/edit/authors/create/')),
     url(r'^edit/author/(?P<pk>[0-9]+)/update/interpolate_redirect/$',
-        views.NaiveAuthorUpdate.as_view(success_url='/edit/author/%(id)d/update/')),
+        views.NaiveAuthorUpdate.as_view(success_url='/edit/author/{id}/update/')),
     url(r'^edit/author/(?P<pk>[0-9]+)/update/interpolate_redirect_nonascii/$',
         views.NaiveAuthorUpdate.as_view(success_url='/%C3%A9dit/author/{id}/update/')),
     url(r'^[eé]dit/author/(?P<pk>[0-9]+)/update/$',
@@ -106,7 +108,7 @@ urlpatterns = [
     url(r'^edit/author/(?P<pk>[0-9]+)/delete/redirect/$',
         views.NaiveAuthorDelete.as_view(success_url='/edit/authors/create/')),
     url(r'^edit/author/(?P<pk>[0-9]+)/delete/interpolate_redirect/$',
-        views.NaiveAuthorDelete.as_view(success_url='/edit/authors/create/?deleted=%(id)s')),
+        views.NaiveAuthorDelete.as_view(success_url='/edit/authors/create/?deleted={id}')),
     url(r'^edit/author/(?P<pk>[0-9]+)/delete/interpolate_redirect_nonascii/$',
         views.NaiveAuthorDelete.as_view(success_url='/%C3%A9dit/authors/create/?deleted={id}')),
     url(r'^edit/author/(?P<pk>[0-9]+)/delete/$',
@@ -278,8 +280,11 @@ urlpatterns = [
     url(r'^dates/books/(?P<year>[0-9]{4})/(?P<month>[a-z]{3})/(?P<day>[0-9]{1,2})/byslug/(?P<slug>[\w-]+)/$',
         views.BookDetail.as_view()),
 
-    url(r'^dates/books/get_object_custom_queryset/(?P<year>[0-9]{4})/(?P<month>[a-z]{3})/(?P<day>[0-9]{1,2})/(?P<pk>[0-9]+)/$',
-        views.BookDetailGetObjectCustomQueryset.as_view()),
+    url(
+        r'^dates/books/get_object_custom_queryset/(?P<year>[0-9]{4})/(?P<month>[a-z]{3})/(?P<day>[0-9]{1,2})/'
+        r'(?P<pk>[0-9]+)/$',
+        views.BookDetailGetObjectCustomQueryset.as_view(),
+    ),
 
     url(r'^dates/booksignings/(?P<year>[0-9]{4})/(?P<month>[a-z]{3})/(?P<day>[0-9]{1,2})/(?P<pk>[0-9]+)/$',
         views.BookSigningDetail.as_view()),

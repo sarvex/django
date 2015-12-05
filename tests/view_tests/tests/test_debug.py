@@ -14,12 +14,16 @@ from unittest import skipIf
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.urlresolvers import reverse
-from django.template.base import TemplateDoesNotExist
-from django.test import RequestFactory, TestCase, override_settings
+from django.db import DatabaseError, connection
+from django.template import TemplateDoesNotExist
+from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test.utils import LoggingCaptureMixin
 from django.utils import six
 from django.utils.encoding import force_bytes, force_text
 from django.utils.functional import SimpleLazyObject
-from django.views.debug import CallableSettingWrapper, ExceptionReporter
+from django.views.debug import (
+    CallableSettingWrapper, ExceptionReporter, technical_500_response,
+)
 
 from .. import BrokenException, except_args
 from ..views import (
@@ -32,7 +36,12 @@ if six.PY3:
     from .py3_test_debug import Py3ExceptionReporterTests  # NOQA
 
 
-class CallableSettingWrapperTests(TestCase):
+class User(object):
+    def __str__(self):
+        return 'jacob'
+
+
+class CallableSettingWrapperTests(SimpleTestCase):
     """ Unittests for CallableSettingWrapper
     """
     def test_repr(self):
@@ -48,7 +57,7 @@ class CallableSettingWrapperTests(TestCase):
 
 
 @override_settings(DEBUG=True, ROOT_URLCONF="view_tests.urls")
-class DebugViewTests(TestCase):
+class DebugViewTests(LoggingCaptureMixin, SimpleTestCase):
 
     def test_files(self):
         response = self.client.get('/raises/')
@@ -80,7 +89,7 @@ class DebugViewTests(TestCase):
         'OPTIONS': {
             'loaders': [
                 ('django.template.loaders.locmem.Loader', {
-                    '403.html': 'This is a test template for a 403 error.',
+                    '403.html': 'This is a test template for a 403 error ({{ exception }}).',
                 }),
             ],
         },
@@ -88,6 +97,7 @@ class DebugViewTests(TestCase):
     def test_403_template(self):
         response = self.client.get('/raises403/')
         self.assertContains(response, 'test template', status_code=403)
+        self.assertContains(response, '(Insufficient Permissions).', status_code=403)
 
     def test_404(self):
         response = self.client.get('/raises404/')
@@ -153,7 +163,7 @@ class DebugViewTests(TestCase):
                 'DIRS': [tempdir],
             }]):
                 response = self.client.get(reverse('raises_template_does_not_exist', kwargs={"path": template_name}))
-            self.assertContains(response, "%s (File does not exist)" % template_path, status_code=500, count=1)
+            self.assertContains(response, "%s (Source does not exist)" % template_path, status_code=500, count=2)
 
     def test_no_template_source_loaders(self):
         """
@@ -164,9 +174,9 @@ class DebugViewTests(TestCase):
     @override_settings(ROOT_URLCONF='view_tests.default_urls')
     def test_default_urlconf_template(self):
         """
-        Make sure that the default urlconf template is shown shown instead
+        Make sure that the default URLconf template is shown shown instead
         of the technical 404 page, if the user has not altered their
-        url conf yet.
+        URLconf yet.
         """
         response = self.client.get('/')
         self.assertContains(
@@ -192,6 +202,26 @@ class DebugViewTests(TestCase):
         )
 
 
+class DebugViewQueriesAllowedTests(SimpleTestCase):
+    # May need a query to initialize MySQL connection
+    allow_database_queries = True
+
+    def test_handle_db_exception(self):
+        """
+        Ensure the debug view works when a database exception is raised by
+        performing an invalid query and passing the exception to the debug view.
+        """
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute('INVALID SQL')
+            except DatabaseError:
+                exc_info = sys.exc_info()
+
+        rf = RequestFactory()
+        response = technical_500_response(rf.get('/'), *exc_info)
+        self.assertContains(response, 'OperationalError at /', status_code=500)
+
+
 @override_settings(
     DEBUG=True,
     ROOT_URLCONF="view_tests.urls",
@@ -200,7 +230,7 @@ class DebugViewTests(TestCase):
         'BACKEND': 'django.template.backends.dummy.TemplateStrings',
     }],
 )
-class NonDjangoTemplatesDebugViewTests(TestCase):
+class NonDjangoTemplatesDebugViewTests(SimpleTestCase):
 
     def test_400(self):
         # Ensure that when DEBUG=True, technical_500_template() is called.
@@ -222,13 +252,14 @@ class NonDjangoTemplatesDebugViewTests(TestCase):
         self.assertContains(response, '<div class="context" id="', status_code=500)
 
 
-class ExceptionReporterTests(TestCase):
+class ExceptionReporterTests(SimpleTestCase):
     rf = RequestFactory()
 
     def test_request_and_exception(self):
         "A simple exception report can be generated"
         try:
             request = self.rf.get('/test_view/')
+            request.user = User()
             raise ValueError("Can't find my keys")
         except ValueError:
             exc_type, exc_value, tb = sys.exc_info()
@@ -238,6 +269,8 @@ class ExceptionReporterTests(TestCase):
         self.assertIn('<pre class="exception_value">Can&#39;t find my keys</pre>', html)
         self.assertIn('<th>Request Method:</th>', html)
         self.assertIn('<th>Request URL:</th>', html)
+        self.assertIn('<h3 id="user-info">USER</h3>', html)
+        self.assertIn('<p>jacob</p>', html)
         self.assertIn('<th>Exception Type:</th>', html)
         self.assertIn('<th>Exception Value:</th>', html)
         self.assertIn('<h2>Traceback ', html)
@@ -256,6 +289,7 @@ class ExceptionReporterTests(TestCase):
         self.assertIn('<pre class="exception_value">Can&#39;t find my keys</pre>', html)
         self.assertNotIn('<th>Request Method:</th>', html)
         self.assertNotIn('<th>Request URL:</th>', html)
+        self.assertNotIn('<h3 id="user-info">USER</h3>', html)
         self.assertIn('<th>Exception Type:</th>', html)
         self.assertIn('<th>Exception Value:</th>', html)
         self.assertIn('<h2>Traceback ', html)
@@ -414,14 +448,23 @@ class ExceptionReporterTests(TestCase):
             "Evaluation exception reason not mentioned in traceback"
         )
 
+    @override_settings(ALLOWED_HOSTS='example.com')
+    def test_disallowed_host(self):
+        "An exception report can be generated even for a disallowed host."
+        request = self.rf.get('/', HTTP_HOST='evil.com')
+        reporter = ExceptionReporter(request, None, None, None)
+        html = reporter.get_traceback_html()
+        self.assertIn("http://evil.com/", html)
 
-class PlainTextReportTests(TestCase):
+
+class PlainTextReportTests(SimpleTestCase):
     rf = RequestFactory()
 
     def test_request_and_exception(self):
         "A simple exception report can be generated"
         try:
             request = self.rf.get('/test_view/')
+            request.user = User()
             raise ValueError("Can't find my keys")
         except ValueError:
             exc_type, exc_value, tb = sys.exc_info()
@@ -431,6 +474,7 @@ class PlainTextReportTests(TestCase):
         self.assertIn("Can't find my keys", text)
         self.assertIn('Request Method:', text)
         self.assertIn('Request URL:', text)
+        self.assertIn('USER: jacob', text)
         self.assertIn('Exception Type:', text)
         self.assertIn('Exception Value:', text)
         self.assertIn('Traceback:', text)
@@ -449,6 +493,7 @@ class PlainTextReportTests(TestCase):
         self.assertIn("Can't find my keys", text)
         self.assertNotIn('Request Method:', text)
         self.assertNotIn('Request URL:', text)
+        self.assertNotIn('USER:', text)
         self.assertIn('Exception Type:', text)
         self.assertIn('Exception Value:', text)
         self.assertIn('Traceback:', text)
@@ -469,6 +514,14 @@ class PlainTextReportTests(TestCase):
     def test_message_only(self):
         reporter = ExceptionReporter(None, None, "I'm a little teapot", None)
         reporter.get_traceback_text()
+
+    @override_settings(ALLOWED_HOSTS='example.com')
+    def test_disallowed_host(self):
+        "An exception report can be generated even for a disallowed host."
+        request = self.rf.get('/', HTTP_HOST='evil.com')
+        reporter = ExceptionReporter(request, None, None, None)
+        text = reporter.get_traceback_text()
+        self.assertIn("http://evil.com/", text)
 
 
 class ExceptionReportTestMixin(object):
@@ -642,7 +695,7 @@ class ExceptionReportTestMixin(object):
 
 
 @override_settings(ROOT_URLCONF='view_tests.urls')
-class ExceptionReporterFilterTests(TestCase, ExceptionReportTestMixin):
+class ExceptionReporterFilterTests(ExceptionReportTestMixin, LoggingCaptureMixin, SimpleTestCase):
     """
     Ensure that sensitive information can be filtered out of error reports.
     Refs #14614.
@@ -833,7 +886,7 @@ class ExceptionReporterFilterTests(TestCase, ExceptionReportTestMixin):
                 self.assertNotContains(response, 'should not be displayed', status_code=500)
 
 
-class AjaxResponseExceptionReporterFilter(TestCase, ExceptionReportTestMixin):
+class AjaxResponseExceptionReporterFilter(ExceptionReportTestMixin, LoggingCaptureMixin, SimpleTestCase):
     """
     Ensure that sensitive information can be filtered out of error reports.
 

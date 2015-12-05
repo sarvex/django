@@ -2,11 +2,14 @@ import json
 import uuid
 
 from django.core import exceptions, serializers
-from django.db import models
-from django.test import TestCase
+from django.db import IntegrityError, models
+from django.test import (
+    SimpleTestCase, TestCase, TransactionTestCase, skipUnlessDBFeature,
+)
 
 from .models import (
-    NullableUUIDModel, PrimaryKeyUUIDModel, RelatedToUUIDModel, UUIDModel,
+    NullableUUIDModel, PrimaryKeyUUIDModel, RelatedToUUIDModel, UUIDGrandchild,
+    UUIDModel,
 )
 
 
@@ -36,6 +39,13 @@ class TestSaveLoad(TestCase):
         loaded = NullableUUIDModel.objects.get()
         self.assertEqual(loaded.field, None)
 
+    def test_pk_validated(self):
+        with self.assertRaisesMessage(TypeError, 'is not a valid UUID'):
+            PrimaryKeyUUIDModel.objects.get(pk={})
+
+        with self.assertRaisesMessage(TypeError, 'is not a valid UUID'):
+            PrimaryKeyUUIDModel.objects.get(pk=[])
+
     def test_wrong_value(self):
         self.assertRaisesMessage(
             ValueError, 'badly formed hexadecimal UUID string',
@@ -46,7 +56,7 @@ class TestSaveLoad(TestCase):
             UUIDModel.objects.create, field='not-a-uuid')
 
 
-class TestMigrations(TestCase):
+class TestMigrations(SimpleTestCase):
 
     def test_deconstruct(self):
         field = models.UUIDField()
@@ -75,8 +85,11 @@ class TestQuerying(TestCase):
         )
 
 
-class TestSerialization(TestCase):
-    test_data = '[{"fields": {"field": "550e8400-e29b-41d4-a716-446655440000"}, "model": "model_fields.uuidmodel", "pk": null}]'
+class TestSerialization(SimpleTestCase):
+    test_data = (
+        '[{"fields": {"field": "550e8400-e29b-41d4-a716-446655440000"}, '
+        '"model": "model_fields.uuidmodel", "pk": null}]'
+    )
 
     def test_dumping(self):
         instance = UUIDModel(field=uuid.UUID('550e8400e29b41d4a716446655440000'))
@@ -88,7 +101,7 @@ class TestSerialization(TestCase):
         self.assertEqual(instance.field, uuid.UUID('550e8400-e29b-41d4-a716-446655440000'))
 
 
-class TestValidation(TestCase):
+class TestValidation(SimpleTestCase):
     def test_invalid_uuid(self):
         field = models.UUIDField()
         with self.assertRaises(exceptions.ValidationError) as cm:
@@ -129,3 +142,35 @@ class TestAsPrimaryKey(TestCase):
         RelatedToUUIDModel.objects.create(uuid_fk=pk_model)
         related = RelatedToUUIDModel.objects.get()
         self.assertEqual(related.uuid_fk.pk, related.uuid_fk_id)
+
+    def test_update_with_related_model_instance(self):
+        # regression for #24611
+        u1 = PrimaryKeyUUIDModel.objects.create()
+        u2 = PrimaryKeyUUIDModel.objects.create()
+        r = RelatedToUUIDModel.objects.create(uuid_fk=u1)
+        RelatedToUUIDModel.objects.update(uuid_fk=u2)
+        r.refresh_from_db()
+        self.assertEqual(r.uuid_fk, u2)
+
+    def test_update_with_related_model_id(self):
+        u1 = PrimaryKeyUUIDModel.objects.create()
+        u2 = PrimaryKeyUUIDModel.objects.create()
+        r = RelatedToUUIDModel.objects.create(uuid_fk=u1)
+        RelatedToUUIDModel.objects.update(uuid_fk=u2.pk)
+        r.refresh_from_db()
+        self.assertEqual(r.uuid_fk, u2)
+
+    def test_two_level_foreign_keys(self):
+        # exercises ForeignKey.get_db_prep_value()
+        UUIDGrandchild().save()
+
+
+class TestAsPrimaryKeyTransactionTests(TransactionTestCase):
+    # Need a TransactionTestCase to avoid deferring FK constraint checking.
+    available_apps = ['model_fields']
+
+    @skipUnlessDBFeature('supports_foreign_keys')
+    def test_unsaved_fk(self):
+        u1 = PrimaryKeyUUIDModel()
+        with self.assertRaises(IntegrityError):
+            RelatedToUUIDModel.objects.create(uuid_fk=u1)

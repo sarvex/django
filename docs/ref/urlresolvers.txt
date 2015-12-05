@@ -10,22 +10,22 @@ reverse()
 If you need to use something similar to the :ttag:`url` template tag in
 your code, Django provides the following function:
 
-.. function:: reverse(viewname, [urlconf=None, args=None, kwargs=None, current_app=None])
+.. function:: reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None)
 
-``viewname`` can be a string containing the Python path to the view object, a
-:ref:`URL pattern name <naming-url-patterns>`, or the callable view object.
-For example, given the following ``url``::
+``viewname`` can be a :ref:`URL pattern name <naming-url-patterns>` or the
+callable view object. For example, given the following ``url``::
 
     from news import views
 
-    url(r'^archive/$', views.archive, name='news_archive')
+    url(r'^archive/$', views.archive, name='news-archive')
 
 you can use any of the following to reverse the URL::
 
     # using the named URL
-    reverse('news_archive')
+    reverse('news-archive')
 
     # passing a callable object
+    # (This is discouraged because you can't reverse namespaced views this way.)
     from news import views
     reverse(views.archive)
 
@@ -62,24 +62,6 @@ namespaces into URLs on specific application instances, according to the
 The ``urlconf`` argument is the URLconf module containing the url patterns to
 use for reversing. By default, the root URLconf for the current thread is used.
 
-.. deprecated:: 1.8
-
-    The ability to reverse using the Python path, e.g.
-    ``reverse('news.views.archive')``, has been deprecated.
-
-.. admonition:: Make sure your views are all correct.
-
-    As part of working out which URL names map to which patterns, the
-    ``reverse()`` function has to import all of your URLconf files and examine
-    the name of each view. This involves importing each view function. If
-    there are *any* errors whilst importing any of your view functions, it
-    will cause ``reverse()`` to raise an error, even if that view function is
-    not the one you are trying to reverse.
-
-    Make sure that any views you reference in your URLconf files exist and can
-    be imported correctly. Do not include lines that reference views you
-    haven't written yet, because those views will not be importable.
-
 .. note::
 
     The string returned by ``reverse()`` is already
@@ -97,7 +79,7 @@ reverse_lazy()
 
 A lazily evaluated version of `reverse()`_.
 
-.. function:: reverse_lazy(viewname, [urlconf=None, args=None, kwargs=None, current_app=None])
+.. function:: reverse_lazy(viewname, urlconf=None, args=None, kwargs=None, current_app=None)
 
 It is useful for when you need to use a URL reversal before your project's
 URLConf is loaded. Some common cases where this function is necessary are:
@@ -154,6 +136,15 @@ If the URL does not resolve, the function raises a
 
         The application namespace for the URL pattern that matches the
         URL.
+
+    .. attribute:: ResolverMatch.app_names
+
+        .. versionadded:: 1.9
+
+        The list of individual namespace components in the full
+        application namespace for the URL pattern that matches the URL.
+        For example, if the ``app_name`` is ``'foo:bar'``, then ``app_names``
+        will be ``['foo', 'bar']``.
 
     .. attribute:: ResolverMatch.namespace
 
